@@ -84,8 +84,7 @@ fn init<W: Write, R: Read>(mut stdout: W, stdin: R, w: u16, h: u16) {
 impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
     
     fn pos(&self, x: u16, y: u16) -> usize {
-        y as usize * self.width as usize + x as usize
-
+        y as usize * 15 + x as usize
     }
 
     fn read_cell(&mut self, c: usize) -> CellStatus {
@@ -189,52 +188,8 @@ impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
                 Char('j') | Char('s') | Down  => self.y = self.down(self.y),
                 Char('k') | Char('w') | Up    => self.y = self.up(self.y),
                 Char('l') | Char('d') | Right => self.x = self.right(self.x),
-                Char('\n') | Char('o') => self.enter(),
-                    // Check if it was a mine.
-                    // let (x, y) = (self.x, self.y);
-
-            //        if first_click {
-            //            // This is the player's first turn; clear all cells of
-            //            // mines around the cursor.
-            //            for &(x, y) in self.adjacent(x, y).iter() {
-            //                self.get_mut(x, y).mine = false;
-            //            }
-            //            self.get_mut(x, y).mine = false;
-            //            first_click = false;
-                //    }
-
-            //        if self.get(x, y).mine {
-            //            self.reveal_all();
-            //            // Make the background colour of the mine we just
-            //            // landed on red, and the foreground black.
-            //            write!(self.stdout, "{}{}{}{}{}",
-            //                   cursor::Goto(x + 2, y + 2),
-            //                   color::Bg(color::Red), color::Fg(color::Black),
-            //                   MINE,
-            //                   style::Reset).unwrap();
-            //            self.game_over();
-            //            return;
-            //        }
-
-            //        if !self.get(x, y).revealed {
-            //            self.points += 1;
-            //        }
-
-            //        // Reveal the cell.
-            //        self.reveal(x, y);
-
-            //        self.print_points();
-            //    },
-            //    Char('f') => {
-            //        let (x, y) = (self.x, self.y);
-            //        self.toggle_flag(x, y);
-            //    }
-            //    Char('r') => {
-            //        self.restart();
-            //        return;
-            //    }
-               Char('q') => {
-                //    write!(self.stdout, "{}{}", clear::All, cursor::Hide).unwrap();
+                Char('\n') => self.enter(),
+                Char('q') => {
                    write!(self.stdout, "{}{}{}", clear::All, style::Reset, cursor::Goto(1, 1)).unwrap();
                    return
                    },
@@ -247,9 +202,9 @@ impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
         }
     }
 
-    fn height(&self) -> u16 {
-        (self.grid.len() / self.width as usize) as u16
-    }
+    //fn height(&self) -> u16 {
+    //    (self.grid.len() / self.width as usize) as u16
+    //}
 
     fn up(&self, y: u16) -> u16 {
         if y <= 1 {
@@ -294,23 +249,39 @@ impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
     }
 
     fn translate_x_address(&self, x: u16) -> u16 {
-        (x + 1 + 2) / 4
+        (x + 1) / 4
     }
 
     fn translate_y_address(&self, y: u16) -> u16 {
-        (y + 2 + 1) / 2
+        (y + 1) / 2
+    }
+
+    fn mark_cell(&mut self, player1: bool, x: u16, y: u16) {
+        let marker;
+        let cellstat;
+        if player1 {
+            marker = PLAYER1;
+            cellstat = CellStatus::Player1Marked;
+        }
+        else {
+            marker = PLAYER2;
+            cellstat = CellStatus::Player2Marked;
+        }
+        write!(self.stdout, "{}{}", cursor::Goto(self.x + 1, self.y + 2), marker).unwrap();
+        self.get_mut(x, y).status = cellstat;
+        self.player1_turn = !self.player1_turn;
     }
 
     fn enter(&mut self) {
         // move cursor back and overwrite cell contents
-        if self.player1_turn {
-            write!(self.stdout, "{}{}", cursor::Goto(self.x + 1, self.y + 2), PLAYER1).unwrap();
-            
+        let x = self.translate_x_address(self.x);
+        let y = self.translate_y_address(self.y);
+        if self.player1_turn && self.get(x, y).status == CellStatus::NotMarked {
+            self.mark_cell(true, x, y);
         }
-        else {
-            write!(self.stdout, "{}{}", cursor::Goto(self.x + 1, self.y + 2), PLAYER2).unwrap();
+        else if self.get(x, y).status == CellStatus::NotMarked {
+            self.mark_cell(false, x, y);
         }
-        self.player1_turn = !self.player1_turn;
     }
 }
 
@@ -318,7 +289,7 @@ fn main() {
     let stdin = stdin();
     let mut stdout = stdout().into_raw_mode().unwrap();
     write!(stdout, "{}{}", termion::clear::All, termion::cursor::Goto(1, 1));
-    let termsize = termion::terminal_size().ok().unwrap();
+    // let termsize = termion::terminal_size().ok().unwrap();
     // let termheight = ;
     // print_grid(&mut stdout);
     write!(stdout, "{}{}{}", clear::All, style::Reset, cursor::Goto(1, 1)).unwrap();
