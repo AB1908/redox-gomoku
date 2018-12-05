@@ -1,16 +1,12 @@
 extern crate termion;
 
-// use std::fmt::Write;
 use std::io::Read;
-// use std::env;
-// use std::io;
 use std::io::{stdin, stdout, Write};
 use std::string::String;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 use termion::*;
-
 
 const TOP_LEFT: &'static str = "┌";
 const TOP: &'static str = "┬";
@@ -26,7 +22,6 @@ const HORZ: &'static str = "---";
 const CELL: &'static str = "   ";
 const PLAYER1: &'static str = " X ";
 const PLAYER2: &'static str = " O ";
-//const PLAYER_MARKER: &'static str = " # ";
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
 enum CellStatus {
@@ -45,10 +40,10 @@ struct Cell {
 
 struct Game<R, W: Write> {
     player1_turn: bool,
-    status: bool,
+    status_player1: bool,
+    status_player2: bool,
     x: u16,
     y: u16,
-    width: u16,
     grid: Box<[Cell]>,
     stdout: W,
     stdin: R,
@@ -56,21 +51,26 @@ struct Game<R, W: Write> {
 
 /// Initialize the game.
 fn init<W: Write, R: Read>(mut stdout: W, stdin: R, w: u16, h: u16) {
-    write!(stdout, "{}{}", clear::All, cursor::Hide).unwrap();
+    // write!(stdout, "{}{}", clear::All, cursor::Hide).unwrap();
+    write!(stdout, "{}", clear::All).unwrap();
 
     // Set the initial game state.
     let mut game = Game {
         player1_turn: true,
         x: 1,
         y: 0,
-        status: false,
-        width: w,
-        grid: vec![Cell {
-            // player_here: false,
-            x: 0,
-            y: 0,
-            status: CellStatus::NotMarked,
-        }; w as usize * h as usize].into_boxed_slice(),
+        status_player1: false,
+        status_player2: false,
+        // width: w,
+        grid: vec![
+            Cell {
+                // player_here: false,
+                x: 0,
+                y: 0,
+                status: CellStatus::NotMarked,
+            };
+            w as usize * h as usize
+        ].into_boxed_slice(),
         stdin: stdin.keys(),
         stdout: stdout,
     };
@@ -81,8 +81,7 @@ fn init<W: Write, R: Read>(mut stdout: W, stdin: R, w: u16, h: u16) {
     game.start();
 }
 
-impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
-    
+impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Game<R, W> {
     fn pos(&self, x: u16, y: u16) -> usize {
         y as usize * 15 + x as usize
     }
@@ -100,14 +99,14 @@ impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
 
     /// Get a mutable reference to the cell at (x, y).
     fn get_mut(&mut self, x: u16, y: u16) -> &mut Cell {
-
         let pos = self.pos(x, y);
         self.read_cell(pos);
         &mut self.grid[pos]
     }
 
+    // TODO Since grid is initially empty, remove case matching and directly string together an
+    // empty grid.
     fn draw_tile_row(&mut self, y: u16) {
-        // let cell = self.get(x, y);
         let mut row;
         row = String::from("");
         for i in 0..15 {
@@ -123,8 +122,7 @@ impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
         write!(self.stdout, "{}\n\r", row).unwrap();
     }
 
-    fn draw_horizontal_wall(&mut self)
-    {
+    fn draw_horizontal_wall(&mut self) {
         let mut row;
         row = String::from(LEFT);
         for _i in 0..14 {
@@ -136,8 +134,7 @@ impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
         write!(self.stdout, "{}\n\r", row).unwrap();
     }
 
-    fn draw_top_wall(&mut self)
-    {
+    fn draw_top_wall(&mut self) {
         let mut row;
         row = String::from(TOP_LEFT);
         for _i in 0..14 {
@@ -149,8 +146,7 @@ impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
         write!(self.stdout, "{}\n\r", row).unwrap();
     }
 
-    fn draw_bottom_wall(&mut self)
-    {
+    fn draw_bottom_wall(&mut self) {
         let mut row;
         row = String::from(BOT_LEFT);
         for _i in 0..14 {
@@ -162,8 +158,8 @@ impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
         write!(self.stdout, "{}", row).unwrap();
     }
 
-    fn draw_grid(&mut self)
-    {
+    fn draw_grid(&mut self) {
+        // write!(self.stdout, "{}", clear::All).unwrap();
         self.draw_top_wall();
         for i in 0..15 {
             self.draw_tile_row(i);
@@ -179,27 +175,36 @@ impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
         // let mut first_click = true;
         self.draw_grid();
         // write!(self.stdout, "{}", cursor::Goto(4,4)).flush().unwrap();
-        loop {
+        while self.status_player1 == false && self.status_player2 == false {
+            // self.draw_grid();
             // Read a single byte from stdin.
             let b = self.stdin.next().unwrap().unwrap();
             use termion::event::Key::*;
             match b {
-                Char('h') | Char('a') | Left  => self.x = self.left(self.x),
-                Char('j') | Char('s') | Down  => self.y = self.down(self.y),
-                Char('k') | Char('w') | Up    => self.y = self.up(self.y),
+                Char('h') | Char('a') | Left => self.x = self.left(self.x),
+                Char('j') | Char('s') | Down => self.y = self.down(self.y),
+                Char('k') | Char('w') | Up => self.y = self.up(self.y),
                 Char('l') | Char('d') | Right => self.x = self.right(self.x),
                 Char('\n') => self.enter(),
                 Char('q') => {
-                   write!(self.stdout, "{}{}{}", clear::All, style::Reset, cursor::Goto(1, 1)).unwrap();
-                   return
-                   },
-               _ => {},
+                    write!(
+                        self.stdout,
+                        "{}{}{}",
+                        clear::All,
+                        style::Reset,
+                        cursor::Goto(1, 1)
+                    ).unwrap();
+                    return;
+                }
+                _ => {}
             }
 
-            // Make sure the cursor is placed on the current position.
             write!(self.stdout, "{}", cursor::Goto(self.x + 2, self.y + 2)).unwrap();
+            // Make sure the cursor is placed on the current position.
             self.stdout.flush().unwrap();
         }
+
+        write!(self.stdout, "{}", cursor::Goto(0, 0)).unwrap();
     }
 
     //fn height(&self) -> u16 {
@@ -214,9 +219,7 @@ impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
             y - 2
         }
     }
-    /// Calculate the y coordinate of the cell "below" a given y coordinate.
-    ///
-    /// This wraps when _y = h - 1_.
+
     fn down(&self, y: u16) -> u16 {
         if y + 2 >= 29 {
             // Lower bound reached. Wrap around.
@@ -225,9 +228,7 @@ impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
             y + 2
         }
     }
-    /// Calculate the x coordinate of the cell "left to" a given x coordinate.
-    ///
-    /// This wraps when _x = 0_.
+
     fn left(&self, x: u16) -> u16 {
         if x <= 3 {
             // Lower bound reached. Wrap around.
@@ -236,9 +237,7 @@ impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
             x - 4
         }
     }
-    /// Calculate the x coordinate of the cell "left to" a given x coordinate.
-    ///
-    /// This wraps when _x = w - 1_.
+
     fn right(&self, x: u16) -> u16 {
         if x + 4 >= 60 {
             // Upper bound reached. Wrap around.
@@ -262,36 +261,173 @@ impl<R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
         if player1 {
             marker = PLAYER1;
             cellstat = CellStatus::Player1Marked;
-        }
-        else {
+        } else {
             marker = PLAYER2;
             cellstat = CellStatus::Player2Marked;
+            // self.row_win(player1);
         }
-        write!(self.stdout, "{}{}", cursor::Goto(self.x + 1, self.y + 2), marker).unwrap();
+        write!(
+            self.stdout,
+            "{}{}",
+            cursor::Goto(self.x + 1, self.y + 2),
+            marker
+        ).unwrap();
         self.get_mut(x, y).status = cellstat;
+        self.check_win(player1);
         self.player1_turn = !self.player1_turn;
     }
 
     fn enter(&mut self) {
-        // move cursor back and overwrite cell contents
         let x = self.translate_x_address(self.x);
         let y = self.translate_y_address(self.y);
         if self.player1_turn && self.get(x, y).status == CellStatus::NotMarked {
             self.mark_cell(true, x, y);
-        }
-        else if self.get(x, y).status == CellStatus::NotMarked {
+        } else if self.get(x, y).status == CellStatus::NotMarked {
             self.mark_cell(false, x, y);
         }
+    }
+
+    //traverse in opposite directions and allow win if summation is exactly five
+
+    fn row_win(&mut self, player1: bool) {
+        //argument for which player win
+        let mut counter = 0;
+        'rows: for _i in 0..15 {
+            let mut _j = 0;
+            'columns: while _j <= 10 {
+                for _k in 0..5 {
+                    if player1 && self.get(_j + _k, _i).status == CellStatus::Player1Marked {
+                        counter += 1;
+                    } else if !player1 && self.get(_j + _k, _i).status == CellStatus::Player2Marked
+                    {
+                        counter += 1;
+                    } else {
+                        _j = _j + _k;
+                        break;
+                    }
+                }
+                _j += 1;
+                if counter == 5 {
+                    if player1 {
+                        self.status_player1 = true;
+                    } else {
+                        self.status_player2 = true;
+                    }
+                    break 'rows;
+                }
+                counter = 0;
+            }
+        }
+    }
+
+    fn column_win(&mut self, player1: bool) {
+        let mut counter = 0;
+        'columns: for _i in 0..15 {
+            let mut _j = 0;
+            'rows: while _j <= 10 {
+                for _k in 0..5 {
+                    if player1 && self.get(_i, _j + _k).status == CellStatus::Player1Marked {
+                        counter += 1;
+                    } else if !player1 && self.get(_i, _j + _k).status == CellStatus::Player2Marked
+                    {
+                        counter += 1;
+                    } else {
+                        _j = _j + _k;
+                        break;
+                    }
+                }
+                _j += 1;
+                if counter == 5 {
+                    if player1 {
+                        self.status_player1 = true;
+                    } else {
+                        self.status_player2 = true;
+                    }
+                    break 'columns;
+                }
+                counter = 0;
+            }
+        }
+    }
+
+    fn leftdiag_win(&mut self, player1: bool) {
+        let mut counter1 = 0;
+        let mut counter2 = 0;
+        let n = 15;
+        for _slice in 0..(2 * n - 1) {
+            let z = if _slice < n { 0 } else { _slice - n + 1 };
+            for _j in z..(_slice - z + 1) {
+                if self.get(_j, _slice - _j).status == CellStatus::Player1Marked && player1 == true
+                {
+                    counter1 += 1;
+                } else if player1 == false
+                    && self.get(_j, _slice - _j).status == CellStatus::Player2Marked
+                {
+                    counter2 += 1;
+                }
+            }
+            if counter1 >= 5 && player1 {
+                self.status_player1 = true;
+                break;
+            } else if counter2 >= 5 && player1 == false {
+                self.status_player2 = true;
+                break;
+            }
+            counter1 = 0;
+            counter2 = 0;
+        }
+    }
+
+    fn rightdiag_win(&mut self, player1: bool) {
+        let mut counter1 = 0;
+        let mut counter2 = 0;
+        let n = 15;
+        for _slice in 0..(2 * n - 1) {
+            let z = if _slice < n { 0 } else { _slice - n + 1 };
+            for _j in z..(_slice - z + 1) {
+                if self.get(_j, n - 1 + _j - _slice).status == CellStatus::Player1Marked
+                    && player1 == true
+                {
+                    counter1 += 1;
+                    write!(self.stdout, "{}{}", cursor::Goto(1, 35), counter1).unwrap();
+                } else if player1 == false
+                    && self.get(_j, n - 1 + _j - _slice).status == CellStatus::Player2Marked
+                {
+                    counter2 += 1;
+                    write!(self.stdout, "{}{}", cursor::Goto(12, 35), counter2).unwrap();
+                }
+            }
+            write!(self.stdout, "{}{}", cursor::Goto(5, 35), counter1).unwrap();
+            write!(self.stdout, "{}{}", cursor::Goto(9, 35), counter2).unwrap();
+            if counter1 >= 5 && player1 {
+                self.status_player1 = true;
+                break;
+            } else if counter2 >= 5 && player1 == false {
+                self.status_player2 = true;
+                break;
+            }
+            counter1 = 0;
+            counter2 = 0;
+        }
+    }
+
+    fn check_win(&mut self, player1: bool) {
+        self.column_win(player1);
+        self.row_win(player1);
+        self.leftdiag_win(player1);
+        self.rightdiag_win(player1);
     }
 }
 
 fn main() {
     let stdin = stdin();
     let mut stdout = stdout().into_raw_mode().unwrap();
-    write!(stdout, "{}{}", termion::clear::All, termion::cursor::Goto(1, 1));
-    // let termsize = termion::terminal_size().ok().unwrap();
-    // let termheight = ;
-    // print_grid(&mut stdout);
-    write!(stdout, "{}{}{}", clear::All, style::Reset, cursor::Goto(1, 1)).unwrap();
+    write!(
+        stdout,
+        "{}{}{}",
+        clear::All,
+        style::Reset,
+        cursor::Goto(1, 1)
+    ).unwrap();
     init(stdout, stdin, 15, 15);
 }
