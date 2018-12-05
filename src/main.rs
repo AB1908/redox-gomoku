@@ -22,6 +22,15 @@ const HORZ: &'static str = "---";
 const CELL: &'static str = "   ";
 const PLAYER1: &'static str = " X ";
 const PLAYER2: &'static str = " O ";
+const WELCOME_TEXT: &'static str = " 
+-----------------------Welcome to Gomoku for Redox OS!-------------------------\n\r
+The rules are simple:\n\r
+1. Chain five or more pieces together to win!\n\r
+2. Use WASD, vim bindings or the arrow keys to move around and Enter to select.\n\r
+3. Press q to quit\n\r
+
+                          Press Enter to start!\n\r
+-------------------------------------------------------------------------------\n\r";
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
 enum CellStatus {
@@ -51,8 +60,9 @@ struct Game<R, W: Write> {
 
 /// Initialize the game.
 fn init<W: Write, R: Read>(mut stdout: W, stdin: R, w: u16, h: u16) {
-    // write!(stdout, "{}{}", clear::All, cursor::Hide).unwrap();
-    write!(stdout, "{}", clear::All).unwrap();
+    write!(stdout, "{}{}", clear::All, cursor::Hide).unwrap();
+    // write!(stdout, "{}", clear::All).unwrap();
+    write!(stdout, "{}", WELCOME_TEXT);
 
     // Set the initial game state.
     let mut game = Game {
@@ -75,9 +85,6 @@ fn init<W: Write, R: Read>(mut stdout: W, stdin: R, w: u16, h: u16) {
         stdout: stdout,
     };
 
-    // Reset that game.
-    // game.reset();
-    // game.draw_tile_row(2);
     game.start();
 }
 
@@ -159,7 +166,7 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Game<R, W> {
     }
 
     fn draw_grid(&mut self) {
-        // write!(self.stdout, "{}", clear::All).unwrap();
+        write!(self.stdout, "{}{}{}", clear::All, cursor::Goto(1, 1), cursor::Show).unwrap();
         self.draw_top_wall();
         for i in 0..15 {
             self.draw_tile_row(i);
@@ -173,13 +180,46 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Game<R, W> {
 
     fn start(&mut self) {
         // let mut first_click = true;
-        self.draw_grid();
+        use termion::event::Key::*;
+        let mut ready = false;
+        while !ready {
+            let b = self.stdin.next().unwrap().unwrap();
+            match b {
+                Char('\n') => ready = true,
+                Char('q') => {
+                    write!(
+                        self.stdout,
+                        "{}{}{}",
+                        clear::All,
+                        style::Reset,
+                        cursor::Goto(1, 1)
+                    ).unwrap();
+                    return;
+                },
+                _ => {},
+            };
+        }
         // write!(self.stdout, "{}", cursor::Goto(4,4)).flush().unwrap();
+        self.draw_grid();
         while self.status_player1 == false && self.status_player2 == false {
+            if self.player1_turn {
+                write!(
+                    self.stdout,
+                    "{}{}",
+                    cursor::Goto(1, 32),
+                    "It's Player 1's turn."
+                );
+            } else {
+                write!(
+                    self.stdout,
+                    "{}{}",
+                    cursor::Goto(1, 32),
+                    "It's Player 2's turn."
+                );
+            }
             // self.draw_grid();
             // Read a single byte from stdin.
             let b = self.stdin.next().unwrap().unwrap();
-            use termion::event::Key::*;
             match b {
                 Char('h') | Char('a') | Left => self.x = self.left(self.x),
                 Char('j') | Char('s') | Down => self.y = self.down(self.y),
@@ -204,12 +244,13 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Game<R, W> {
             self.stdout.flush().unwrap();
         }
 
-        write!(self.stdout, "{}", cursor::Goto(0, 0)).unwrap();
+        write!(self.stdout, "{}{}", clear::All, cursor::Goto(1, 1)).unwrap();
+        if self.status_player1 {
+            write!(self.stdout, "{}", "Player 1 has won the game!");
+        } else {
+            write!(self.stdout, "{}", "Player 2 has won the game!");
+        }
     }
-
-    //fn height(&self) -> u16 {
-    //    (self.grid.len() / self.width as usize) as u16
-    //}
 
     fn up(&self, y: u16) -> u16 {
         if y <= 1 {
@@ -389,16 +430,12 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Game<R, W> {
                     && player1 == true
                 {
                     counter1 += 1;
-                    write!(self.stdout, "{}{}", cursor::Goto(1, 35), counter1).unwrap();
                 } else if player1 == false
                     && self.get(_j, n - 1 + _j - _slice).status == CellStatus::Player2Marked
                 {
                     counter2 += 1;
-                    write!(self.stdout, "{}{}", cursor::Goto(12, 35), counter2).unwrap();
                 }
             }
-            write!(self.stdout, "{}{}", cursor::Goto(5, 35), counter1).unwrap();
-            write!(self.stdout, "{}{}", cursor::Goto(9, 35), counter2).unwrap();
             if counter1 >= 5 && player1 {
                 self.status_player1 = true;
                 break;
